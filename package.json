@@ -1,0 +1,31 @@
+{
+  "name": "secure-scanner-viewer",
+  "version": "1.0.0",
+  "description": "Secure Scanner Viewer System - Internal application for managing scanned documents",
+  "private": true,
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:web": "npm run dev --workspace=web",
+    "build": "npm run build --workspace=web && npm run build --workspace=server",
+    "test": "npm run test --workspace=server && npm run test --workspace=web",
+    "prisma:generate": "npm run prisma:generate --workspace=server",
+    "prisma:migrate": "npm run prisma:migrate --workspace=server",
+    "seed": "npm run seed --workspace=server",
+    "setup": "node setup.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  }
+}

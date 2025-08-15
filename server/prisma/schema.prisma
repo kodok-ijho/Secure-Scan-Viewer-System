@@ -1,0 +1,55 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../data/app.db"
+}
+
+// SQLite doesn't support enums, so we use string literals
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         String   // "ADMIN" or "USER"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  fileLogs FileLog[]
+
+  @@map("users")
+}
+
+model Setting {
+  id               Int       @id @default(1)
+  sourceFolder     String
+  retentionDays    Int
+  lastIndexingAt   DateTime?
+  lastIndexingMode String?   // "COPY" or "MOVE"
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("settings")
+}
+
+model FileLog {
+  id            String    @id @default(cuid())
+  filename      String
+  sourcePath    String?
+  localPath     String
+  action        String    // "COPIED", "MOVED", "DELETED_RETENTION", "DELETED_MANUAL"
+  actorUserId   String?
+  retentionDate DateTime?
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@map("file_logs")
+}

@@ -6,6 +6,9 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
+// Import config after dotenv
+import { cfg } from '../src/config/env';
+
 const prisma = new PrismaClient();
 
 interface CleanupResult {
@@ -20,24 +23,22 @@ async function getRetentionSettings() {
     const settings = await prisma.setting.findUnique({
       where: { id: 'singleton' }
     });
-    
-    const retentionDays = settings?.retentionDays || parseInt(process.env.RETENTION_DAYS || '7');
-    const retentionMinutes = parseInt(process.env.RETENTION_MINUTES || '0');
-    
+
+    const retentionDays = settings?.retentionDays || cfg.retentionDays;
+    const retentionMinutes = cfg.retentionMinutes;
+
     return { retentionDays, retentionMinutes };
   } catch (error) {
     console.warn('Failed to get retention settings from database, using environment defaults');
     return {
-      retentionDays: parseInt(process.env.RETENTION_DAYS || '7'),
-      retentionMinutes: parseInt(process.env.RETENTION_MINUTES || '0')
+      retentionDays: cfg.retentionDays,
+      retentionMinutes: cfg.retentionMinutes
     };
   }
 }
 
 function getStoragePath(): string {
-  const vol = process.env.RAILWAY_VOLUME_MOUNT_PATH;
-  return process.env.LOCAL_ROOT || 
-    (vol ? path.join(vol, 'storage', 'local') : path.resolve(process.cwd(), 'storage/local'));
+  return cfg.storageDir;
 }
 
 function isFileExpired(filePath: string, retentionDays: number, retentionMinutes: number): boolean {
@@ -196,4 +197,4 @@ if (require.main === module) {
   main();
 }
 
-export { cleanupFiles };
+export { cleanupFiles as cleanupOldFiles };

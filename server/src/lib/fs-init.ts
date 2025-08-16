@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { cfg } from '../config/env';
 
 export interface FileSystemPaths {
   localRoot: string;
@@ -8,28 +9,11 @@ export interface FileSystemPaths {
   database: string;
 }
 
-export function resolvePaths(): FileSystemPaths {
-  // Railway provides RAILWAY_VOLUME_MOUNT_PATH when volume is attached
-  const vol = process.env.RAILWAY_VOLUME_MOUNT_PATH;
-  
-  // Determine storage paths
-  const localRoot = process.env.LOCAL_ROOT || 
-    (vol ? path.join(vol, 'storage', 'local') : path.resolve(process.cwd(), 'storage/local'));
-  
-  const source = process.env.DEFAULT_SOURCE || 
-    (vol ? path.join(vol, 'source') : undefined);
-  
-  // Database path for SQLite
-  const database = vol ? 
-    path.join(vol, 'db', 'app.db') : 
-    path.resolve(process.cwd(), 'data', 'app.db');
-
-  // Auto-create required directories
+export function ensureDirs(): void {
   const dirsToCreate = [
-    localRoot,
-    source,
-    vol && path.join(vol, 'db'),
-    path.dirname(database)
+    cfg.storageDir,
+    cfg.sourceDir,
+    cfg.dbDir
   ].filter(Boolean) as string[];
 
   dirsToCreate.forEach(dirPath => {
@@ -44,22 +28,22 @@ export function resolvePaths(): FileSystemPaths {
     }
   });
 
-  // Set DATABASE_URL if not already set
-  if (!process.env.DATABASE_URL) {
-    process.env.DATABASE_URL = `file:${database}`;
-  }
-
   console.log('🔧 File system paths resolved:');
-  console.log(`   Local storage: ${localRoot}`);
-  console.log(`   Source folder: ${source || 'Not configured'}`);
-  console.log(`   Volume mount: ${vol || 'Not available'}`);
-  console.log(`   Database: ${database}`);
+  console.log(`   Local storage: ${cfg.storageDir}`);
+  console.log(`   Source folder: ${cfg.sourceDir || 'Not configured'}`);
+  console.log(`   Volume mount: ${cfg.volumePath || 'Not available'}`);
+  console.log(`   Database: ${cfg.databaseUrl}`);
+}
+
+// Legacy function for backward compatibility
+export function resolvePaths(): FileSystemPaths {
+  ensureDirs();
 
   return {
-    localRoot,
-    source,
-    volume: vol,
-    database
+    localRoot: cfg.storageDir,
+    source: cfg.sourceDir || undefined,
+    volume: cfg.volumePath,
+    database: cfg.databaseUrl
   };
 }
 

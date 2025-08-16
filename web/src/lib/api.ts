@@ -1,9 +1,9 @@
 import axios, { AxiosResponse } from 'axios'
 
-// Get API base URL from environment variables
-export const API_BASE = (import.meta.env as any).VITE_API_URL || 'http://localhost:4000';
-export const apiUrl = (path: string) =>
-  `${API_BASE.replace(/\/+$/, '')}${path.startsWith('/') ? '' : '/'}${path}`;
+// Get API base URL from environment variables (new name with legacy fallback)
+const base = (import.meta.env as any).VITE_API_BASE_URL || (import.meta.env as any).VITE_API_URL || 'http://localhost:4000';
+export const API_BASE = base.replace(/\/+$/, '');
+export const apiUrl = (path: string) => `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
 
 const API_BASE_URL = apiUrl('/api')
 

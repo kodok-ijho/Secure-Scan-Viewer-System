@@ -5,6 +5,8 @@ import mime from 'mime-types';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { resolvePaths, listFiles, getFileStats } from '../lib/fs-init';
 import { prisma } from '../lib/database';
+import { cfg } from '../config/env';
+import { resolveSafe, sanitizeFilename, isSafeForInlinePreview } from '../lib/path-guard';
 
 function extractOwnerFromFilename(filename: string): string | null {
   const parts = filename.split('_');
@@ -58,8 +60,9 @@ export async function listUserFiles(req: AuthenticatedRequest, res: Response) {
 export async function streamFile(req: AuthenticatedRequest, res: Response) {
   try {
     const filename = req.params.filename;
-    const { localRoot } = resolvePaths();
-    const filePath = path.join(localRoot, filename);
+
+    // Path traversal protection
+    const safePath = resolveSafe(cfg.storageDir, filename);
 
     // Check if user has access to this file
     if (req.user?.role === 'USER') {
@@ -68,15 +71,30 @@ export async function streamFile(req: AuthenticatedRequest, res: Response) {
       }
     }
 
-    if (!fs.existsSync(filePath)) {
+    if (!fs.existsSync(safePath)) {
       return res.status(404).json({ error: 'File not found' });
     }
 
+    const stats = fs.statSync(safePath);
     const mimeType = mime.lookup(filename) || 'application/octet-stream';
+
+    // Preview size limit (2MB for text files)
+    const maxPreviewSize = 2 * 1024 * 1024;
+    if (mimeType.startsWith('text/') && stats.size > maxPreviewSize) {
+      return res.status(413).json({ error: 'File too large for preview' });
+    }
+
+    // Set appropriate headers for preview
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    
-    const fileStream = fs.createReadStream(filePath);
+
+    if (isSafeForInlinePreview(mimeType)) {
+      res.setHeader('Content-Disposition', 'inline');
+    } else {
+      res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(filename)}"`);
+    }
+
+    const fileStream = fs.createReadStream(safePath);
     fileStream.pipe(res);
   } catch (error) {
     console.error('Error streaming file:', error);
@@ -87,8 +105,9 @@ export async function streamFile(req: AuthenticatedRequest, res: Response) {
 export async function downloadFile(req: AuthenticatedRequest, res: Response) {
   try {
     const filename = req.params.filename;
-    const { localRoot } = resolvePaths();
-    const filePath = path.join(localRoot, filename);
+
+    // Path traversal protection
+    const safePath = resolveSafe(cfg.storageDir, filename);
 
     // Check if user has access to this file
     if (req.user?.role === 'USER') {
@@ -97,15 +116,15 @@ export async function downloadFile(req: AuthenticatedRequest, res: Response) {
       }
     }
 
-    if (!fs.existsSync(filePath)) {
+    if (!fs.existsSync(safePath)) {
       return res.status(404).json({ error: 'File not found' });
     }
 
     const mimeType = mime.lookup(filename) || 'application/octet-stream';
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    
-    const fileStream = fs.createReadStream(filePath);
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(filename)}"`);
+
+    const fileStream = fs.createReadStream(safePath);
     fileStream.pipe(res);
   } catch (error) {
     console.error('Error downloading file:', error);
@@ -116,8 +135,9 @@ export async function downloadFile(req: AuthenticatedRequest, res: Response) {
 export async function deleteFile(req: AuthenticatedRequest, res: Response) {
   try {
     const filename = req.params.filename;
-    const { localRoot } = resolvePaths();
-    const filePath = path.join(localRoot, filename);
+
+    // Path traversal protection
+    const safePath = resolveSafe(cfg.storageDir, filename);
 
     // Check if user has access to this file
     if (req.user?.role === 'USER') {
@@ -126,24 +146,24 @@ export async function deleteFile(req: AuthenticatedRequest, res: Response) {
       }
     }
 
-    if (!fs.existsSync(filePath)) {
+    if (!fs.existsSync(safePath)) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    fs.unlinkSync(filePath);
-    
+    fs.unlinkSync(safePath);
+
     // Create log entry
     if (req.user) {
       await prisma.log.create({
         data: {
           filename,
-          localPath: filePath,
+          localPath: safePath,
           action: 'MANUAL_DELETED',
           actorId: req.user.id
         }
       });
     }
-    
+
     res.json({ message: 'File deleted successfully' });
   } catch (error) {
     console.error('Error deleting file:', error);

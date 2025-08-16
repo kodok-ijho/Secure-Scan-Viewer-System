@@ -7,7 +7,8 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
-import { resolvePaths } from './lib/fs-init';
+import { cfg } from './config/env';
+import { ensureDirs } from './lib/fs-init';
 import { initializeDatabase, closeDatabase } from './lib/database';
 
 // Import routes
@@ -20,10 +21,10 @@ import logsRoutes from './routes/logs';
 import dashboardRoutes from './routes/dashboard';
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = cfg.port;
 
 // Initialize file system paths
-resolvePaths();
+ensureDirs();
 
 // Security middleware
 app.use(helmet({
@@ -31,32 +32,39 @@ app.use(helmet({
   contentSecurityPolicy: false
 }));
 
-// Rate limiting
-const limiter = rateLimit({
+// Global rate limiting
+const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 1000, // limit each IP to 1000 requests per windowMs
   message: 'Too many requests from this IP, please try again later.'
 });
-app.use(limiter);
+app.use(globalLimiter);
 
-// CORS configuration for production
-const allowedOrigins = (process.env.WEB_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
+// Auth-specific rate limiting (more restrictive)
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // limit each IP to 10 auth requests per minute
+  message: 'Too many authentication attempts, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// CORS configuration with multi-origin support
+const allowedOrigins = new Set(cfg.corsOrigins);
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (same-origin, curl, mobile apps)
     if (!origin) return cb(null, true);
-    
+
     // Allow configured origins
-    if (allowedOrigins.includes(origin)) {
-      return cb(null, true);
-    }
-    
+    if (allowedOrigins.has(origin)) return cb(null, true);
+
     // In development, allow localhost
-    if (process.env.NODE_ENV !== 'production' && origin.includes('localhost')) {
+    if (cfg.nodeEnv !== 'production' && origin.includes('localhost')) {
       return cb(null, true);
     }
-    
-    cb(new Error('Not allowed by CORS'));
+
+    return cb(new Error('Not allowed by CORS'));
   },
   credentials: true
 }));
@@ -85,8 +93,8 @@ app.get('/deploy/netlify', (req, res) => {
   res.redirect(url);
 });
 
-// API routes
-app.use('/api/auth', authRoutes);
+// API routes with auth rate limiting
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/users', usersRoutes);
@@ -113,13 +121,34 @@ async function startServer() {
   try {
     // Initialize database
     await initializeDatabase();
+
+    // Setup internal cron if enabled
+    if (cfg.cronMode === 'internal') {
+      const cron = await import('node-cron');
+      const { cleanupOldFiles } = await import('../scripts/cleanup');
+
+      // Run cleanup every 15 minutes
+      cron.schedule('*/15 * * * *', async () => {
+        console.log('🧹 Running scheduled cleanup...');
+        try {
+          await cleanupOldFiles();
+        } catch (error) {
+          console.error('❌ Scheduled cleanup failed:', error);
+        }
+      });
+
+      console.log('⏰ Internal cron scheduler started (every 15 minutes)');
+    } else {
+      console.log('⏰ External cron mode - cleanup should be handled by Railway Cron');
+    }
     
     // Start server
     const server = app.listen(PORT, () => {
       console.log(`🚀 Secure Scanner Viewer Server running on port ${PORT}`);
-      console.log(`🌐 CORS origins: ${allowedOrigins.join(', ') || 'localhost (development)'}`);
-      console.log(`🔒 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🌐 CORS origins: ${Array.from(allowedOrigins).join(', ') || 'localhost (development)'}`);
+      console.log(`🔒 Environment: ${cfg.nodeEnv}`);
       console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+      console.log(`🗂️ Cron mode: ${cfg.cronMode}`);
     });
 
     // Graceful shutdown

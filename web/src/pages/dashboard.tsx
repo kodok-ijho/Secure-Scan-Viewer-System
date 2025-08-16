@@ -23,7 +23,7 @@ export function DashboardPage() {
 
   const { data: logStats } = useQuery({
     queryKey: ['log-stats'],
-    queryFn: () => logsApi.stats().then(res => res.data),
+    queryFn: () => dashboardApi.stats().then(res => res.data),
     enabled: user?.role === 'ADMIN',
   })
 

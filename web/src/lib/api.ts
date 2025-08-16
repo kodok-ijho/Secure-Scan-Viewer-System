@@ -1,6 +1,11 @@
 import axios, { AxiosResponse } from 'axios'
 
-const API_BASE_URL = 'http://localhost:4000/api'
+// Get API base URL from environment variables
+export const API_BASE = (import.meta.env as any).VITE_API_URL || 'http://localhost:4000';
+export const apiUrl = (path: string) =>
+  `${API_BASE.replace(/\/+$/, '')}${path.startsWith('/') ? '' : '/'}${path}`;
+
+const API_BASE_URL = apiUrl('/api')
 
 // Create axios instance
 export const api = axios.create({
@@ -17,39 +22,16 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Response interceptor to handle token refresh
+// Response interceptor to handle auth errors
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config
-
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true
-
-      try {
-        const refreshToken = localStorage.getItem('refreshToken')
-        if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-            refreshToken,
-          })
-          
-          const { accessToken } = response.data
-          localStorage.setItem('accessToken', accessToken)
-          
-          // Retry original request with new token
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`
-          return api(originalRequest)
-        }
-      } catch (refreshError) {
-        // Refresh failed, redirect to login
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
-        localStorage.removeItem('user')
-        window.location.href = '/login'
-        return Promise.reject(refreshError)
-      }
+    if (error.response?.status === 401) {
+      // Token expired or invalid, redirect to login
+      localStorage.removeItem('accessToken')
+      localStorage.removeItem('user')
+      window.location.href = '/login'
     }
-
     return Promise.reject(error)
   }
 )
@@ -68,8 +50,7 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  accessToken: string
-  refreshToken: string
+  token: string
   user: User
 }
 
@@ -119,28 +100,25 @@ export interface LogsResponse {
 export const authApi = {
   login: (data: LoginRequest): Promise<AxiosResponse<LoginResponse>> =>
     api.post('/auth/login', data),
-  
-  refresh: (refreshToken: string): Promise<AxiosResponse<{ accessToken: string }>> =>
-    api.post('/auth/refresh', { refreshToken }),
-  
-  logout: (refreshToken?: string): Promise<AxiosResponse<{ message: string }>> =>
-    api.post('/auth/logout', { refreshToken }),
+
+  me: (): Promise<AxiosResponse<{ user: User }>> =>
+    api.get('/auth/me'),
 }
 
 export const settingsApi = {
   get: (): Promise<AxiosResponse<Settings>> =>
     api.get('/settings'),
-  
+
   update: (data: Partial<Settings>): Promise<AxiosResponse<Settings>> =>
-    api.patch('/settings', data),
-  
-  testAccess: (sourceFolder?: string): Promise<AxiosResponse<{ accessible: boolean; error?: string }>> =>
-    api.post('/settings/test-access', { sourceFolder }),
+    api.put('/settings', data),
+
+  testAccess: (folderPath: string): Promise<AxiosResponse<{ success: boolean; message?: string; error?: string }>> =>
+    api.post('/settings/test-access', { folderPath }),
 }
 
 export const indexingApi = {
-  index: (mode: 'COPY' | 'MOVE'): Promise<AxiosResponse<IndexingResult>> =>
-    api.post('/index', { mode }),
+  run: (mode: 'COPY' | 'MOVE'): Promise<AxiosResponse<{ success: boolean; mode: string; results: any; timestamp: string }>> =>
+    api.post('/indexing/run', { mode }),
 }
 
 export const filesApi = {
@@ -192,20 +170,22 @@ export const usersApi = {
 
 export const logsApi = {
   list: (params?: {
-    page?: number
-    limit?: number
+    search?: string
     action?: string
-    filename?: string
-  }): Promise<AxiosResponse<LogsResponse>> =>
+  }): Promise<AxiosResponse<LogEntry[]>> =>
     api.get('/logs', { params }),
-  
-  get: (id: string): Promise<AxiosResponse<LogEntry>> =>
-    api.get(`/logs/${id}`),
-  
+}
+
+export const dashboardApi = {
   stats: (): Promise<AxiosResponse<{
-    totalLogs: number
-    actionCounts: Record<string, number>
+    totalFiles: number
+    totalSize: number
     recentActivity: number
+    retentionDays: number
+    lastIndexing: string | null
+    indexingMode: string | null
+    sourceFolder: string | null
+    recentLogs: LogEntry[]
   }>> =>
-    api.get('/logs/stats'),
+    api.get('/dashboard/stats'),
 }

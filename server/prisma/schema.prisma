@@ -7,49 +7,44 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:../data/app.db"
+  url      = env("DATABASE_URL")
 }
-
-// SQLite doesn't support enums, so we use string literals
 
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
-  passwordHash String
-  role         String   // "ADMIN" or "USER"
+  passwordHash String   @map("password")
+  role         String   @default("USER")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   // Relations
-  fileLogs FileLog[]
+  logs         Log[]
 
   @@map("users")
 }
 
 model Setting {
-  id               Int       @id @default(1)
-  sourceFolder     String
-  retentionDays    Int
-  lastIndexingAt   DateTime?
-  lastIndexingMode String?   // "COPY" or "MOVE"
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id              String    @id @default("singleton")
+  sourceFolder    String?
+  retentionDays   Int       @default(7)
+  lastIndexingAt  DateTime?
+  lastIndexingMode String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@map("settings")
 }
 
-model FileLog {
-  id            String    @id @default(cuid())
-  filename      String
-  sourcePath    String?
-  localPath     String
-  action        String    // "COPIED", "MOVED", "DELETED_RETENTION", "DELETED_MANUAL"
-  actorUserId   String?
-  retentionDate DateTime?
-  createdAt     DateTime  @default(now())
+model Log {
+  id          String   @id @default(cuid())
+  filename    String
+  sourcePath  String?
+  localPath   String
+  action      String
+  actorId     String?
+  actor       User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
 
-  // Relations
-  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
-
-  @@map("file_logs")
+  @@map("logs")
 }

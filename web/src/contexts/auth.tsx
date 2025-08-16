@@ -38,7 +38,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         console.error('Failed to parse stored user:', error)
         localStorage.removeItem('user')
         localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
       }
     }
     
@@ -48,32 +47,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = async (username: string, password: string) => {
     try {
       const response = await authApi.login({ username, password })
-      const { accessToken, refreshToken, user: userData } = response.data
+      const { token, user: userData } = response.data
 
-      localStorage.setItem('accessToken', accessToken)
-      localStorage.setItem('refreshToken', refreshToken)
+      localStorage.setItem('accessToken', token)
       localStorage.setItem('user', JSON.stringify(userData))
-      
+
       setUser(userData)
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Login failed')
     }
   }
 
-  const logout = async () => {
-    try {
-      const refreshToken = localStorage.getItem('refreshToken')
-      if (refreshToken) {
-        await authApi.logout(refreshToken)
-      }
-    } catch (error) {
-      console.error('Logout error:', error)
-    } finally {
-      localStorage.removeItem('accessToken')
-      localStorage.removeItem('refreshToken')
-      localStorage.removeItem('user')
-      setUser(null)
-    }
+  const logout = () => {
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('user')
+    setUser(null)
   }
 
   const value = {

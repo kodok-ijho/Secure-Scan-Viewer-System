@@ -1,31 +1,37 @@
 {
   "name": "secure-scanner-viewer",
   "version": "1.0.0",
-  "description": "Secure Scanner Viewer System - Internal application for managing scanned documents",
+  "description": "Secure Scanner Viewer System - Internal application for managing scanned documents with role-based access control",
   "private": true,
   "workspaces": [
-    "server",
-    "web"
+    "web",
+    "server"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
     "dev:server": "npm run dev --workspace=server",
     "dev:web": "npm run dev --workspace=web",
-    "build": "npm run build --workspace=web && npm run build --workspace=server",
-    "test": "npm run test --workspace=server && npm run test --workspace=web",
-    "prisma:generate": "npm run prisma:generate --workspace=server",
-    "prisma:migrate": "npm run prisma:migrate --workspace=server",
-    "seed": "npm run seed --workspace=server",
-    "setup": "node setup.js"
+    "build": "npm run build --workspace=server && npm run build --workspace=web",
+    "build:server": "npm run build --workspace=server",
+    "build:web": "npm run build --workspace=web",
+    "start": "npm run start --workspace=server",
+    "start:server": "npm run start --workspace=server",
+    "start:web": "npm run preview --workspace=web",
+    "test": "npm run test --workspace=web",
+    "preview": "npm run preview --workspace=web",
+    "cleanup": "npm run cleanup:once --workspace=server"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "dotenv": "^16.6.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "mime-types": "^2.1.35"
   }
 }

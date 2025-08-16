@@ -45,8 +45,8 @@ export function SettingsPage() {
   const testAccessMutation = useMutation({
     mutationFn: (folder: string) => settingsApi.testAccess(folder),
     onSuccess: (response) => {
-      setTestResult(response.data)
-      if (response.data.accessible) {
+      setTestResult({ accessible: response.data.success, error: response.data.error })
+      if (response.data.success) {
         toast.success('Source folder is accessible')
       } else {
         toast.error('Source folder is not accessible')

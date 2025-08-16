@@ -24,9 +24,9 @@ export function IndexingPage() {
   const [lastResult, setLastResult] = useState<IndexingResult | null>(null)
 
   const indexingMutation = useMutation({
-    mutationFn: (mode: 'COPY' | 'MOVE') => indexingApi.index(mode),
+    mutationFn: (mode: 'COPY' | 'MOVE') => indexingApi.run(mode),
     onSuccess: (response) => {
-      const result = response.data
+      const result = (response as any).data
       setLastResult(result)
       queryClient.invalidateQueries({ queryKey: ['files'] })
       queryClient.invalidateQueries({ queryKey: ['settings'] })

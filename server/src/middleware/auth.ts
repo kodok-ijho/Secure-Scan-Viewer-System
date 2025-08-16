@@ -1,64 +1,77 @@
-import { Request, Response, NextFunction } from 'express'
-import { JwtService } from '../utils/jwt'
-import { AuthenticatedUser } from '../types/auth'
-import { Role } from '../types/common'
+import { Request, Response, NextFunction } from 'express';
+import jwt, { SignOptions } from 'jsonwebtoken';
+import { prisma } from '../lib/database';
 
-// Extend Express Request type to include user
-declare global {
-  namespace Express {
-    interface Request {
-      user?: AuthenticatedUser
-    }
-  }
+export interface AuthenticatedRequest extends Request {
+  user?: {
+    id: string;
+    username: string;
+    role: 'ADMIN' | 'USER';
+  };
 }
 
-export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
+export async function authenticateToken(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
   try {
-    // Try to get token from Authorization header first
-    let token: string | undefined
-    const authHeader = req.headers.authorization
+    const authHeader = req.headers['authorization'];
+    let token = authHeader && authHeader.startsWith('Bearer ') 
+      ? authHeader.substring(7) 
+      : null;
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7) // Remove 'Bearer ' prefix
-    } else if (req.query.token && typeof req.query.token === 'string') {
-      // Fallback to query parameter for stream endpoints
-      token = req.query.token
+    // Support query parameter tokens for file operations
+    if (!token && req.query.token) {
+      token = req.query.token as string;
     }
 
     if (!token) {
-      res.status(401).json({ error: 'Access token required' })
-      return
+      return res.status(401).json({ error: 'Access token required' });
     }
 
-    const payload = JwtService.verifyAccessToken(token)
-
-    req.user = {
-      id: payload.userId,
-      username: payload.username,
-      role: payload.role,
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret') as any;
+    
+    const user = await prisma.user.findUnique({
+      where: { username: decoded.username },
+      select: {
+        id: true,
+        username: true,
+        role: true
+      }
+    });
+    
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid token' });
     }
 
-    next()
+    req.user = user as { id: string; username: string; role: 'ADMIN' | 'USER' };
+    next();
   } catch (error) {
-    res.status(401).json({ error: 'Invalid or expired token' })
+    console.error('Token verification failed:', error);
+    return res.status(403).json({ error: 'Invalid or expired token' });
   }
 }
 
-export const requireRole = (roles: Role[]) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.user) {
-      res.status(401).json({ error: 'Authentication required' })
-      return
-    }
-
-    if (!roles.includes(req.user.role)) {
-      res.status(403).json({ error: 'Insufficient permissions' })
-      return
-    }
-
-    next()
+export function requireAdmin(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (!req.user || req.user.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Admin access required' });
   }
+  next();
 }
 
-export const requireAdmin = requireRole(['ADMIN'])
-export const requireUser = requireRole(['USER', 'ADMIN'])
+export function generateToken(user: { username: string; role: string }): string {
+  const secret = process.env.JWT_SECRET || 'fallback-secret';
+  return jwt.sign(
+    {
+      username: user.username,
+      role: user.role,
+      exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+    },
+    secret
+  );
+}
